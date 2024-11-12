@@ -1,10 +1,10 @@
 // src/components/PositionView.jsx
 import { useState, useEffect } from 'react';
-import { useStaking } from '../hooks/useStaking';
 import { ethers } from 'ethers';
+import { useStaking } from '../hooks/useStaking';
 
 export function PositionView() {
-  const { getPosition, getNetworkSymbol } = useStaking();
+  const { getPosition, getCurrentNetwork, getNetworkSymbol } = useStaking();
   const [position, setPosition] = useState(null);
   const [symbol, setSymbol] = useState('');
   const [loading, setLoading] = useState(true);
@@ -16,10 +16,16 @@ export function PositionView() {
         const provider = new ethers.providers.Web3Provider(window.ethereum);
         const signer = provider.getSigner();
         const address = await signer.getAddress();
-        const pos = await getPosition(address);
-        const sym = await getNetworkSymbol();
-        setSymbol(sym);
+
+        // Get all data concurrently
+        const [pos, sym] = await Promise.all([
+          getPosition(address),
+          getNetworkSymbol()
+        ]);
+
+        console.log('Raw position data:', pos);
         setPosition(pos);
+        setSymbol(sym);
       }
     } catch (err) {
       console.error("Error updating position:", err);
@@ -35,26 +41,11 @@ export function PositionView() {
   }, []);
 
   if (loading) {
-    return (
-      <div className="bg-white rounded-lg shadow p-6">
-        <div className="animate-pulse flex flex-col space-y-4">
-          <div className="h-4 bg-gray-200 rounded w-1/4"></div>
-          <div className="space-y-3">
-            <div className="h-4 bg-gray-200 rounded"></div>
-            <div className="h-4 bg-gray-200 rounded"></div>
-            <div className="h-4 bg-gray-200 rounded"></div>
-          </div>
-        </div>
-      </div>
-    );
+    return <div>Loading position...</div>;
   }
 
   if (!position) {
-    return (
-      <div className="bg-white rounded-lg shadow p-6">
-        <div className="text-gray-500">No position data available</div>
-      </div>
-    );
+    return <div>No position data available</div>;
   }
 
   return (

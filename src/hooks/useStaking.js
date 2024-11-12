@@ -5,7 +5,7 @@ import { ethers } from "ethers";
 const CONTRACTS = {
   BOB_SEPOLIA: {
     STAKING: "0x6696283e07CE0619F6d88626A77A41978517dd1F",
-    GM_TOKEN: "0x5600A56980492570B74C71b16A242544208e4E53",
+    GM_TOKEN: "0x5600a56980492570B74C71B16A242544208e4E53",
   },
   ROOTSTOCK_TESTNET: {
     STAKING: "0xE49B7BBc8c9Dc60754Bf7e3A9ce96230aB348830",
@@ -165,6 +165,8 @@ export function useStaking() {
   const [error, setError] = useState(null);
 
   const getCurrentNetwork = async () => {
+    if (!window.ethereum) throw new Error("No ethereum provider found");
+
     const provider = new ethers.providers.Web3Provider(window.ethereum);
     const network = await provider.getNetwork();
     const chainId = network.chainId;
@@ -178,7 +180,7 @@ export function useStaking() {
   };
 
   const getContracts = useCallback(async () => {
-    if (typeof window.ethereum === "undefined") {
+    if (!window.ethereum) {
       throw new Error("Please install MetaMask");
     }
 
@@ -187,15 +189,25 @@ export function useStaking() {
     const signer = provider.getSigner();
 
     const networkType = await getCurrentNetwork();
+    console.log("Current network:", networkType);
+
+    // Get network-specific contract addresses
+    const stakingAddress = CONTRACTS[networkType].STAKING;
+    const gmTokenAddress = CONTRACTS[networkType].GM_TOKEN;
+
+    console.log("Using contracts:", {
+      staking: stakingAddress,
+      gmToken: gmTokenAddress,
+    });
 
     const stakingContract = new ethers.Contract(
-      CONTRACTS[networkType].STAKING,
+      stakingAddress,
       STAKING_ABI,
       signer
     );
 
     const gmTokenContract = new ethers.Contract(
-      CONTRACTS[networkType].GM_TOKEN,
+      gmTokenAddress,
       GM_TOKEN_ABI,
       signer
     );

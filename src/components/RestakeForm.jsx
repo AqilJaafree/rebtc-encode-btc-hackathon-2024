@@ -1,27 +1,43 @@
 // src/components/RestakeForm.jsx
 import { useState, useEffect } from 'react';
+import { ethers } from 'ethers';
 import { useStaking } from '../hooks/useStaking';
 
 export function RestakeForm() {
-  const { restake, getPosition, getNetworkSymbol, loading, error } = useStaking();
+  const { restake, getPosition, getNetworkSymbol, loading: stakingLoading, error: stakingError } = useStaking();
   const [amount, setAmount] = useState('');
   const [gmBalance, setGmBalance] = useState('0');
   const [symbol, setSymbol] = useState('');
   const [txHash, setTxHash] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
 
   const updateBalance = async () => {
-    if (window.ethereum) {
-      try {
-        const provider = new ethers.providers.Web3Provider(window.ethereum);
-        const signer = provider.getSigner();
-        const address = await signer.getAddress();
-        const position = await getPosition(address);
-        setGmBalance(position.gmTokenBalance);
-        const sym = await getNetworkSymbol();
-        setSymbol(sym);
-      } catch (err) {
-        console.error("Error fetching position:", err);
-      }
+    if (!window.ethereum) {
+      setError("Please install MetaMask");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const provider = new ethers.providers.Web3Provider(window.ethereum);
+      const signer = provider.getSigner();
+      const address = await signer.getAddress();
+
+      const [position, sym] = await Promise.all([
+        getPosition(address),
+        getNetworkSymbol()
+      ]);
+
+      setGmBalance(position.gmTokenBalance);
+      setSymbol(sym);
+      
+      console.log('GM Balance:', position.gmTokenBalance);
+    } catch (err) {
+      console.error("Error fetching position:", err);
+      setError(err.message || "Error fetching position");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -36,7 +52,10 @@ export function RestakeForm() {
     if (!amount || parseFloat(amount) <= 0) return;
 
     try {
+      setLoading(true);
       setTxHash('');
+      setError(null);
+
       const tx = await restake(amount);
       console.log("Restake successful:", tx);
       setTxHash(tx.transactionHash);
@@ -44,6 +63,9 @@ export function RestakeForm() {
       await updateBalance();
     } catch (err) {
       console.error("Restake failed:", err);
+      setError(err.message || "Restake failed");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -73,12 +95,13 @@ export function RestakeForm() {
             step="0.000000000000000001"
             min="0"
             max={gmBalance}
-            disabled={loading}
+            disabled={loading || stakingLoading}
           />
           <button
             type="button"
             onClick={handleMaxClick}
             className="absolute right-2 top-2.5 text-sm text-blue-500 hover:text-blue-700"
+            disabled={loading || stakingLoading}
           >
             MAX
           </button>
@@ -86,27 +109,17 @@ export function RestakeForm() {
 
         <button
           type="submit"
-          disabled={loading || !amount || parseFloat(amount) <= 0 || parseFloat(amount) > parseFloat(gmBalance)}
+          disabled={loading || stakingLoading || !amount || parseFloat(amount) <= 0 || parseFloat(amount) > parseFloat(gmBalance)}
           className={`w-full py-3 rounded-lg text-white font-medium ${
-            loading ? 'bg-gray-400' : 'bg-green-500 hover:bg-green-600'
+            loading || stakingLoading ? 'bg-gray-400' : 'bg-green-500 hover:bg-green-600'
           }`}
         >
-          {loading ? (
-            <div className="flex items-center justify-center">
-              <svg className="animate-spin h-5 w-5 mr-3" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-              </svg>
-              Restaking...
-            </div>
-          ) : (
-            `Restake gm${symbol}`
-          )}
+          {loading || stakingLoading ? 'Processing...' : `Restake gm${symbol}`}
         </button>
 
-        {error && (
+        {(error || stakingError) && (
           <div className="text-red-500 text-sm mt-2">
-            {error}
+            {error || stakingError}
           </div>
         )}
 
