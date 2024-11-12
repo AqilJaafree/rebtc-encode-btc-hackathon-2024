@@ -4,6 +4,12 @@
 
 ReBTC is a decentralized staking platform built on the Rootstock (RSK) Blockchain and Sepolia Bob (BOB) testnet. It allows users to stake their native tokens (tRBTC on RSK, BOB on Sepolia) and earn rewards through a two-layer staking mechanism.
 
+## GM TOKEN BOB SEPOLIA
+https://bob-sepolia.explorer.gobob.xyz/address/0x5600a56980492570B74C71B16A242544208e4E53
+
+## STAKING & RESTAKING CONTRACT KING BOB
+https://bob-sepolia.explorer.gobob.xyz/address/0x6696283e07CE0619F6d88626A77A41978517dd1F
+
 ## Key Features
 
 - **First Layer Staking**: Users can stake their native tRBTC or BOB tokens and earn rewards based on a fixed APR.
