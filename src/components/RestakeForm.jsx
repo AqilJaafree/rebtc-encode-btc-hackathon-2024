@@ -1,29 +1,34 @@
 // src/components/RestakeForm.jsx
 import { useState, useEffect } from 'react';
-import { ethers } from 'ethers';
 import { useStaking } from '../hooks/useStaking';
 
 export function RestakeForm() {
-  const { restake, getPosition, loading, error } = useStaking();
+  const { restake, getPosition, getNetworkSymbol, loading, error } = useStaking();
   const [amount, setAmount] = useState('');
   const [gmBalance, setGmBalance] = useState('0');
-  const [transactionHash, setTransactionHash] = useState(null);
+  const [symbol, setSymbol] = useState('');
+  const [txHash, setTxHash] = useState('');
 
   const updateBalance = async () => {
-    try {
-      const provider = new ethers.providers.Web3Provider(window.ethereum);
-      const signer = provider.getSigner();
-      const address = await signer.getAddress();
-      const position = await getPosition(address);
-      setGmBalance(position.gmTokenBalance);
-      console.log("GM Balance:", position.gmTokenBalance);
-    } catch (err) {
-      console.error("Error fetching balance:", err);
+    if (window.ethereum) {
+      try {
+        const provider = new ethers.providers.Web3Provider(window.ethereum);
+        const signer = provider.getSigner();
+        const address = await signer.getAddress();
+        const position = await getPosition(address);
+        setGmBalance(position.gmTokenBalance);
+        const sym = await getNetworkSymbol();
+        setSymbol(sym);
+      } catch (err) {
+        console.error("Error fetching position:", err);
+      }
     }
   };
 
   useEffect(() => {
     updateBalance();
+    const interval = setInterval(updateBalance, 15000);
+    return () => clearInterval(interval);
   }, []);
 
   const handleRestake = async (e) => {
@@ -31,13 +36,10 @@ export function RestakeForm() {
     if (!amount || parseFloat(amount) <= 0) return;
 
     try {
-      setTransactionHash(null); // Reset transaction hash
-      console.log("Attempting to restake:", amount, "gmBOB");
-      
+      setTxHash('');
       const tx = await restake(amount);
-      console.log("Restake transaction:", tx);
-      
-      setTransactionHash(tx.transactionHash);
+      console.log("Restake successful:", tx);
+      setTxHash(tx.transactionHash);
       setAmount('');
       await updateBalance();
     } catch (err) {
@@ -51,12 +53,12 @@ export function RestakeForm() {
 
   return (
     <div className="bg-white rounded-lg shadow p-6">
-      <h2 className="text-xl font-bold mb-4">Restake gmBOB</h2>
+      <h2 className="text-xl font-bold mb-4">Restake gm{symbol}</h2>
       
       <div className="mb-4">
         <div className="flex justify-between text-sm">
-          <span className="text-gray-600">Available gmBOB:</span>
-          <span>{parseFloat(gmBalance).toFixed(4)} gmBOB</span>
+          <span className="text-gray-600">Available gm{symbol}:</span>
+          <span>{parseFloat(gmBalance).toFixed(4)} gm{symbol}</span>
         </div>
       </div>
 
@@ -76,7 +78,7 @@ export function RestakeForm() {
           <button
             type="button"
             onClick={handleMaxClick}
-            className="absolute right-2 top-2.5 text-blue-500 hover:text-blue-700 text-sm font-medium"
+            className="absolute right-2 top-2.5 text-sm text-blue-500 hover:text-blue-700"
           >
             MAX
           </button>
@@ -86,7 +88,7 @@ export function RestakeForm() {
           type="submit"
           disabled={loading || !amount || parseFloat(amount) <= 0 || parseFloat(amount) > parseFloat(gmBalance)}
           className={`w-full py-3 rounded-lg text-white font-medium ${
-            loading ? 'bg-gray-400' : 'bg-blue-500 hover:bg-blue-600'
+            loading ? 'bg-gray-400' : 'bg-green-500 hover:bg-green-600'
           }`}
         >
           {loading ? (
@@ -98,21 +100,23 @@ export function RestakeForm() {
               Restaking...
             </div>
           ) : (
-            'Restake gmBOB'
+            `Restake gm${symbol}`
           )}
         </button>
 
         {error && (
-          <div className="text-red-500 text-sm">
+          <div className="text-red-500 text-sm mt-2">
             {error}
           </div>
         )}
 
-        {transactionHash && (
+        {txHash && (
           <div className="mt-4 text-sm text-green-500">
-            Transaction submitted! {' '}
+            Transaction successful!{' '}
             <a
-              href={`https://bob-sepolia.explorer.gobob.xyz/tx/${transactionHash}`}
+              href={`${window.location.hostname.includes('rsk') ? 
+                'https://explorer.testnet.rsk.co/tx/' : 
+                'https://bob-sepolia.explorer.gobob.xyz/tx/'}${txHash}`}
               target="_blank"
               rel="noopener noreferrer"
               className="text-blue-500 hover:underline"

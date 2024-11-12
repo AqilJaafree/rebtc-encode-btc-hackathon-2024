@@ -2,7 +2,31 @@
 import { useState, useCallback } from "react";
 import { ethers } from "ethers";
 
-const STAKING_ADDRESS = "0x6696283e07CE0619F6d88626A77A41978517dd1F";
+const CONTRACTS = {
+  BOB_SEPOLIA: {
+    STAKING: "0x6696283e07CE0619F6d88626A77A41978517dd1F",
+    GM_TOKEN: "0x5600A56980492570B74C71b16A242544208e4E53",
+  },
+  ROOTSTOCK_TESTNET: {
+    STAKING: "0xE49B7BBc8c9Dc60754Bf7e3A9ce96230aB348830",
+    GM_TOKEN: "0xCbA6179FECC48b7c92BB9292AAee6296d338c99C",
+  },
+};
+
+const NETWORK_CONFIGS = {
+  BOB_SEPOLIA: {
+    chainId: "0xC576D", // 808813 in hex
+    decimalChainId: 808813,
+    name: "BOB Sepolia",
+    symbol: "BOB",
+  },
+  ROOTSTOCK_TESTNET: {
+    chainId: "0x1F", // 31 in hex
+    decimalChainId: 31,
+    name: "RSK Testnet",
+    symbol: "tRBTC",
+  },
+};
 
 const STAKING_ABI = [
   {
@@ -23,19 +47,6 @@ const STAKING_ABI = [
     name: "restake",
     outputs: [],
     stateMutability: "nonpayable",
-    type: "function",
-  },
-  {
-    inputs: [],
-    name: "gmToken",
-    outputs: [
-      {
-        internalType: "address",
-        name: "",
-        type: "address",
-      },
-    ],
-    stateMutability: "view",
     type: "function",
   },
   {
@@ -152,7 +163,19 @@ const GM_TOKEN_ABI = [
 export function useStaking() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [gmTokenAddress, setGmTokenAddress] = useState(null);
+
+  const getCurrentNetwork = async () => {
+    const provider = new ethers.providers.Web3Provider(window.ethereum);
+    const network = await provider.getNetwork();
+    const chainId = network.chainId;
+
+    if (chainId === NETWORK_CONFIGS.BOB_SEPOLIA.decimalChainId) {
+      return "BOB_SEPOLIA";
+    } else if (chainId === NETWORK_CONFIGS.ROOTSTOCK_TESTNET.decimalChainId) {
+      return "ROOTSTOCK_TESTNET";
+    }
+    throw new Error("Unsupported network");
+  };
 
   const getContracts = useCallback(async () => {
     if (typeof window.ethereum === "undefined") {
@@ -163,38 +186,28 @@ export function useStaking() {
     const provider = new ethers.providers.Web3Provider(window.ethereum);
     const signer = provider.getSigner();
 
-    // Get staking contract
+    const networkType = await getCurrentNetwork();
+
     const stakingContract = new ethers.Contract(
-      STAKING_ADDRESS,
+      CONTRACTS[networkType].STAKING,
       STAKING_ABI,
       signer
     );
 
-    // Get GM Token address if we don't have it
-    if (!gmTokenAddress) {
-      const gmAddress = await stakingContract.gmToken();
-      console.log("GM Token address:", gmAddress);
-      setGmTokenAddress(gmAddress);
-
-      // Create GM Token contract instance
-      const gmTokenContract = new ethers.Contract(
-        gmAddress,
-        GM_TOKEN_ABI,
-        signer
-      );
-
-      return { stakingContract, gmTokenContract, signer };
-    }
-
-    // Use existing GM Token address
     const gmTokenContract = new ethers.Contract(
-      gmTokenAddress,
+      CONTRACTS[networkType].GM_TOKEN,
       GM_TOKEN_ABI,
       signer
     );
 
-    return { stakingContract, gmTokenContract, signer };
-  }, [gmTokenAddress]);
+    return { stakingContract, gmTokenContract, signer, networkType };
+  }, []);
+
+  const getNativeBalance = async (address) => {
+    const provider = new ethers.providers.Web3Provider(window.ethereum);
+    const balance = await provider.getBalance(address);
+    return ethers.utils.formatEther(balance);
+  };
 
   const stake = async (amount) => {
     try {
@@ -202,8 +215,9 @@ export function useStaking() {
       setError(null);
 
       const { stakingContract } = await getContracts();
-      console.log("Staking amount:", amount);
       const amountInWei = ethers.utils.parseEther(amount.toString());
+
+      console.log("Staking amount:", amount);
       console.log("Amount in Wei:", amountInWei.toString());
 
       const tx = await stakingContract.stake({
@@ -218,11 +232,7 @@ export function useStaking() {
       return receipt;
     } catch (err) {
       console.error("Staking error:", err);
-      let errorMessage = err.message;
-      if (err.error?.message) {
-        errorMessage = err.error.message;
-      }
-      setError(errorMessage);
+      setError(err.message);
       throw err;
     } finally {
       setLoading(false);
@@ -234,33 +244,32 @@ export function useStaking() {
       setLoading(true);
       setError(null);
 
-      const { stakingContract, gmTokenContract, signer } = await getContracts();
+      const { stakingContract, gmTokenContract, signer, networkType } =
+        await getContracts();
       const address = await signer.getAddress();
 
       const amountInWei = ethers.utils.parseEther(amount.toString());
-      console.log("Amount to restake:", amount, "gmBOB");
+      console.log("Attempting to restake:", amount);
       console.log("Amount in Wei:", amountInWei.toString());
 
-      // Check allowance first
+      // Check allowance
       const allowance = await gmTokenContract.allowance(
         address,
-        STAKING_ADDRESS
+        CONTRACTS[networkType].STAKING
       );
       console.log("Current allowance:", ethers.utils.formatEther(allowance));
 
-      // If allowance is insufficient, approve first
       if (allowance.lt(amountInWei)) {
-        console.log("Approving gmBOB...");
+        console.log("Approving tokens...");
         const approveTx = await gmTokenContract.approve(
-          STAKING_ADDRESS,
+          CONTRACTS[networkType].STAKING,
           amountInWei
         );
         console.log("Approval transaction sent:", approveTx.hash);
-        const approveReceipt = await approveTx.wait();
-        console.log("Approval confirmed:", approveReceipt);
+        await approveTx.wait();
+        console.log("Approval confirmed");
       }
 
-      // Now perform the restake
       console.log("Executing restake...");
       const tx = await stakingContract.restake(amountInWei, {
         gasLimit: 500000,
@@ -273,39 +282,25 @@ export function useStaking() {
       return receipt;
     } catch (err) {
       console.error("Restaking error:", err);
-      let errorMessage = err.message;
-      if (err.error?.message) {
-        errorMessage = err.error.message;
-      }
-      setError(errorMessage);
+      setError(err.message);
       throw err;
     } finally {
       setLoading(false);
     }
   };
 
-  const getGmTokenBalance = async (address) => {
-    try {
-      const { gmTokenContract } = await getContracts();
-      const balance = await gmTokenContract.balanceOf(address);
-      return ethers.utils.formatEther(balance);
-    } catch (err) {
-      console.error("Error getting GM token balance:", err);
-      return "0";
-    }
-  };
-
   const getPosition = async (address) => {
     try {
-      const { stakingContract } = await getContracts();
+      const { stakingContract, gmTokenContract } = await getContracts();
       const position = await stakingContract.getPosition(address);
+      const gmBalance = await gmTokenContract.balanceOf(address);
 
       return {
         stakedAmount: ethers.utils.formatEther(position.stakedAmount),
         restakedAmount: ethers.utils.formatEther(position.restakedAmount),
         estimatedRewards: ethers.utils.formatEther(position.estimatedRewards),
         lastUpdateTime: position.lastUpdateTime.toString(),
-        gmTokenBalance: ethers.utils.formatEther(position.gmTokenBalance),
+        gmTokenBalance: ethers.utils.formatEther(gmBalance),
       };
     } catch (err) {
       console.error("Get position error:", err);
@@ -313,26 +308,19 @@ export function useStaking() {
     }
   };
 
-  const checkAllowance = async (owner, amount) => {
-    try {
-      const { gmTokenContract } = await getContracts();
-      const allowance = await gmTokenContract.allowance(owner, STAKING_ADDRESS);
-      const amountInWei = ethers.utils.parseEther(amount.toString());
-      return allowance.gte(amountInWei);
-    } catch (err) {
-      console.error("Error checking allowance:", err);
-      return false;
-    }
+  const getNetworkSymbol = async () => {
+    const networkType = await getCurrentNetwork();
+    return NETWORK_CONFIGS[networkType].symbol;
   };
 
   return {
     stake,
     restake,
     getPosition,
-    getGmTokenBalance,
-    checkAllowance,
+    getNativeBalance,
+    getNetworkSymbol,
+    getCurrentNetwork,
     loading,
     error,
-    gmTokenAddress,
   };
 }

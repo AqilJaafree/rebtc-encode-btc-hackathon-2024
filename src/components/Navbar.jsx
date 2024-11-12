@@ -1,8 +1,8 @@
 // src/components/Navbar.jsx
 import { useState, useEffect } from 'react';
 import { ethers } from 'ethers';
-// In Navbar.jsx
-import { NETWORK_CONFIGS } from '../constants';
+import { NetworkSwitch } from './NetworkSwitch';
+import { NETWORK_CONFIGS } from '../constants/addresses';
 
 export function Navbar() {
   const [account, setAccount] = useState(null);
@@ -15,6 +15,12 @@ export function Navbar() {
       window.ethereum.on('chainChanged', () => window.location.reload());
       window.ethereum.on('accountsChanged', checkConnection);
     }
+    return () => {
+      if (window.ethereum) {
+        window.ethereum.removeListener('chainChanged', () => window.location.reload());
+        window.ethereum.removeListener('accountsChanged', checkConnection);
+      }
+    };
   }, []);
 
   const checkConnection = async () => {
@@ -49,22 +55,14 @@ export function Navbar() {
     }
   };
 
-  const switchToBobSepolia = async () => {
-    const config = NETWORK_CONFIGS.BOB_SEPOLIA;
-    try {
-      await window.ethereum.request({
-        method: 'wallet_addEthereumChain',
-        params: [{
-          chainId: config.chainId,
-          chainName: config.name,
-          nativeCurrency: config.nativeCurrency,
-          rpcUrls: [config.rpcUrl],
-          blockExplorerUrls: [config.explorerUrl]
-        }]
-      });
-    } catch (err) {
-      console.error(err);
+  const getCurrencySymbol = () => {
+    const chainId = network?.chainId;
+    for (const config of Object.values(NETWORK_CONFIGS)) {
+      if (config.decimalChainId === chainId) {
+        return config.nativeCurrency.symbol;
+      }
     }
+    return 'ETH';
   };
 
   return (
@@ -72,23 +70,21 @@ export function Navbar() {
       <div className="max-w-7xl mx-auto px-4 py-3">
         <div className="flex justify-between items-center">
           <div className="flex items-center">
-            <span className="text-xl font-bold text-blue-600">BOB Staking</span>
+            <span className="text-xl font-bold text-blue-600">L2 Staking</span>
           </div>
           
           <div className="flex items-center space-x-4">
-            {network && network.chainId !== 111 && (
-              <button
-                onClick={switchToBobSepolia}
-                className="px-4 py-2 bg-yellow-500 text-white rounded hover:bg-yellow-600"
-              >
-                Switch to BOB Sepolia
-              </button>
+            {account && (
+              <NetworkSwitch 
+                currentNetwork={network?.chainId} 
+                onSwitch={checkConnection}
+              />
             )}
             
             {account ? (
               <div className="flex items-center space-x-4">
                 <span className="text-sm text-gray-600">
-                  {balance && `${parseFloat(balance).toFixed(4)} BOB`}
+                  {balance && `${parseFloat(balance).toFixed(4)} ${getCurrencySymbol()}`}
                 </span>
                 <span className="px-4 py-2 bg-gray-100 rounded-full text-sm">
                   {`${account.slice(0, 6)}...${account.slice(-4)}`}
